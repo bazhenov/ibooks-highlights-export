@@ -4,6 +4,7 @@ name = "ibooks-export"
 version = "0.1.0"
 [dependencies]
 anyhow = "*"
+chrono = "*"
 dirs = "*"
 rusqlite = "0.26.3"
 thiserror = "*"
