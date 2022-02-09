@@ -1,0 +1,9 @@
+[package]
+edition = "2021"
+name = "ibooks-export"
+version = "0.1.0"
+[dependencies]
+anyhow = "*"
+dirs = "*"
+rusqlite = "0.26.3"
+thiserror = "*"
