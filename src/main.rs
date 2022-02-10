@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    env,
     ffi::OsStr,
     fs,
     path::{Path, PathBuf},
@@ -20,6 +21,15 @@ enum Errors {
 
     #[error("Processing annotation")]
     ContextProcessingAnnotation,
+
+    #[error("Unable to find program location")]
+    UnableToFindProgramLocation,
+
+    #[error("Unable to write sync-file")]
+    UnableToWriteSyncFile,
+
+    #[error("Unable to read sync-file")]
+    UnableToReadSyncFile,
 }
 
 struct Annotation {
@@ -38,13 +48,15 @@ fn main() -> Result<()> {
     log::debug!("Library database location: {:?}", &library_db);
     log::debug!("Annotation database location: {:?}", &annotation_db);
 
+    let last_sync_file = LastSyncFile::find()?;
+    log::debug!("Last sync file: {:?}", last_sync_file.0);
+    let last_sync = last_sync_file.read()?;
+    log::debug!("Last sync date: {:?}", last_sync);
+
+    let last_sync_date = last_sync.map(|s| s.timestamp()).unwrap_or(0);
+
     let connection = Connection::open(annotation_db)?;
     connection.execute("ATTACH DATABASE ? AS l", [library_db.to_str()])?;
-
-    let last_sync_date = last_sync_time::read()?;
-    log::debug!("Last sync date: {:?}", last_sync_date);
-
-    let last_sync_date = last_sync_date.map(|s| s.timestamp()).unwrap_or(0);
 
     let mut stms = connection.prepare(
         "select
@@ -83,6 +95,7 @@ fn main() -> Result<()> {
     }
 
     for (book, annotations) in annotations_by_book {
+        println!();
         println!("- [[{}]]", book);
         for a in annotations {
             let text = a.selected_text.as_ref().map(String::as_str).unwrap_or("-");
@@ -97,31 +110,42 @@ fn main() -> Result<()> {
 
     if let Some(time) = new_last_sync_time {
         log::debug!("Updating last sync time: {}", time);
-        last_sync_time::update(time)?;
+        last_sync_file.update(time)?;
     }
 
     Ok(())
 }
 
-mod last_sync_time {
-    use super::*;
-    const FILE_NAME: &str = "./.last_sync";
+struct LastSyncFile(PathBuf);
 
-    pub fn read() -> Result<Option<DateTime<Utc>>> {
-        if !Path::new(FILE_NAME).exists() {
+impl LastSyncFile {
+    fn find() -> Result<Self> {
+        let mut state_dir = dirs::data_dir().ok_or(Errors::UnableToFindProgramLocation)?;
+
+        state_dir.push("ibooks-export");
+        if !state_dir.exists() {
+            fs::create_dir_all(&state_dir)?;
+        }
+
+        state_dir.push("last_sync");
+
+        Ok(Self(state_dir))
+    }
+
+    pub fn read(&self) -> Result<Option<DateTime<Utc>>> {
+        if !Path::new(&self.0).exists() {
             return Ok(None);
         }
 
-        let data = fs::read(FILE_NAME)?;
+        let data = fs::read(&self.0).context(Errors::UnableToReadSyncFile)?;
 
         let string = String::from_utf8(data)?;
         let date = DateTime::parse_from_rfc3339(&string)?.with_timezone(&Utc);
         Ok(Some(date))
     }
 
-    pub fn update(ts: DateTime<Utc>) -> Result<()> {
-        fs::write(FILE_NAME, ts.to_rfc3339())?;
-        Ok(())
+    pub fn update(&self, ts: DateTime<Utc>) -> Result<()> {
+        fs::write(&self.0, ts.to_rfc3339()).context(Errors::UnableToWriteSyncFile)
     }
 }
 
