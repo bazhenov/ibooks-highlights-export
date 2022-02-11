@@ -2,13 +2,32 @@ use std::{
     collections::HashMap,
     ffi::OsStr,
     fs,
+    io::stdout,
     path::{Path, PathBuf},
 };
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, TimeZone, Utc};
+use clap::Parser;
 use rusqlite::Connection;
+use serde::Serialize;
 use thiserror::Error;
+
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Args {
+    /// Do not update sync date at the end
+    #[clap(long)]
+    dry_run: bool,
+
+    /// Output annotation in JSON format
+    #[clap(long, short)]
+    json: bool,
+
+    /// Read all annotations, not from last sync time
+    #[clap(short)]
+    all: bool,
+}
 
 #[derive(Error, Debug)]
 enum Errors {
@@ -31,8 +50,10 @@ enum Errors {
     UnableToReadSyncFile,
 }
 
+#[derive(Serialize)]
 struct Annotation {
     selected_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     note: Option<String>,
     anotation_time: DateTime<Utc>,
     book_title: String,
@@ -40,6 +61,8 @@ struct Annotation {
 
 fn main() -> Result<()> {
     env_logger::init();
+    let args = Args::parse();
+
     let (annotation_db, library_db) = locate_annotation_database()?
         .zip(locate_library_database()?)
         .ok_or(Errors::NoDbFound)?;
@@ -49,13 +72,40 @@ fn main() -> Result<()> {
 
     let last_sync_file = LastSyncFile::find()?;
     log::debug!("Last sync file: {:?}", last_sync_file.0);
-    let last_sync = last_sync_file.read()?;
+
+    let last_sync = if args.all {
+        None
+    } else {
+        last_sync_file.read()?
+    };
     log::debug!("Last sync date: {:?}", last_sync);
 
-    let last_sync_date = last_sync.map(|s| s.timestamp()).unwrap_or(0);
+    let annotations = read_annotations(annotation_db, library_db, last_sync)?;
+    let new_last_sync_time = annotations.iter().map(|a| a.anotation_time).max();
 
+    if args.json {
+        serde_json::to_writer(stdout(), &annotations)?;
+    } else {
+        report_in_logseq_format(annotations);
+    }
+
+    if !args.dry_run {
+        if let Some(time) = new_last_sync_time {
+            log::debug!("Updating last sync time: {}", time);
+            last_sync_file.update(time)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn read_annotations(
+    annotation_db: impl AsRef<Path>,
+    library_db: impl AsRef<Path>,
+    created_after: Option<DateTime<Utc>>,
+) -> Result<Vec<Annotation>> {
     let connection = Connection::open(annotation_db)?;
-    connection.execute("ATTACH DATABASE ? AS l", [library_db.to_str()])?;
+    connection.execute("ATTACH DATABASE ? AS l", [library_db.as_ref().to_str()])?;
 
     let mut stms = connection.prepare(
         "select
@@ -66,11 +116,12 @@ fn main() -> Result<()> {
          from ZAEANNOTATION a
          inner join ZBKLIBRARYASSET l ON l.ZASSETID = a.ZANNOTATIONASSETID
          where a.ZANNOTATIONSELECTEDTEXT IS NOT NULL AND (a.ZANNOTATIONNOTE != '' OR a.ZANNOTATIONNOTE IS NULL) AND
-         a.ZANNOTATIONMODIFICATIONDATE > ?
+         round(a.ZANNOTATIONMODIFICATIONDATE) > ?
          ORDER BY a.ZANNOTATIONMODIFICATIONDATE",
     )?;
-    let annotations = stms.query_map([timestamp_to_core_data(last_sync_date)], |row| {
-        let ts: f32 = row.get(2)?;
+    let created_after = created_after.map(|t| t.timestamp()).unwrap_or(0);
+    let annotations = stms.query_map([timestamp_to_core_data(created_after)], |row| {
+        let ts: f64 = row.get(2)?;
         Ok(Annotation {
             selected_text: row.get(0)?,
             note: row.get(1)?,
@@ -79,12 +130,12 @@ fn main() -> Result<()> {
         })
     })?;
 
-    let annotations = annotations
+    annotations
         .map(|r| r.context(Errors::ContextProcessingAnnotation))
-        .collect::<Result<Vec<_>>>()?;
+        .collect::<Result<Vec<_>>>()
+}
 
-    let new_last_sync_time = annotations.iter().map(|a| a.anotation_time).max();
-
+fn report_in_logseq_format(annotations: impl IntoIterator<Item = Annotation>) {
     let mut annotations_by_book = HashMap::new();
     for a in annotations {
         annotations_by_book
@@ -94,7 +145,6 @@ fn main() -> Result<()> {
     }
 
     for (book, annotations) in annotations_by_book {
-        println!();
         println!("- [[{}]]", book);
         for a in annotations {
             let text = a.selected_text.as_deref().unwrap_or("-");
@@ -106,13 +156,6 @@ fn main() -> Result<()> {
             }
         }
     }
-
-    if let Some(time) = new_last_sync_time {
-        log::debug!("Updating last sync time: {}", time);
-        last_sync_file.update(time)?;
-    }
-
-    Ok(())
 }
 
 struct LastSyncFile(PathBuf);
