@@ -1,13 +1,12 @@
 use std::{
     collections::HashMap,
-    env,
     ffi::OsStr,
     fs,
     path::{Path, PathBuf},
 };
 
 use anyhow::{Context, Result};
-use chrono::{DateTime, Duration, TimeZone, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use rusqlite::Connection;
 use thiserror::Error;
 
@@ -98,7 +97,7 @@ fn main() -> Result<()> {
         println!();
         println!("- [[{}]]", book);
         for a in annotations {
-            let text = a.selected_text.as_ref().map(String::as_str).unwrap_or("-");
+            let text = a.selected_text.as_deref().unwrap_or("-");
             if let Some(note) = a.note {
                 println!("\t\t- {}", note);
                 println!("\t\t\t- > {}", text);
