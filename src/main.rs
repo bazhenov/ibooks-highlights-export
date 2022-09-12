@@ -111,7 +111,7 @@ fn read_annotations(
         "select
             a.ZANNOTATIONSELECTEDTEXT,
             a.ZANNOTATIONNOTE,
-            a.ZANNOTATIONMODIFICATIONDATE,
+            round(a.ZANNOTATIONMODIFICATIONDATE),
             l.ZTITLE
          from ZAEANNOTATION a
          inner join ZBKLIBRARYASSET l ON l.ZASSETID = a.ZANNOTATIONASSETID
