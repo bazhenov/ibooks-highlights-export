@@ -1,3 +1,9 @@
+use anyhow::{Context, Result};
+use chrono::{DateTime, TimeZone, Utc};
+use clap::Parser;
+use log::debug;
+use rusqlite::Connection;
+use serde::Serialize;
 use std::{
     collections::HashMap,
     ffi::OsStr,
@@ -5,12 +11,6 @@ use std::{
     io::stdout,
     path::{Path, PathBuf},
 };
-
-use anyhow::{Context, Result};
-use chrono::{DateTime, TimeZone, Utc};
-use clap::Parser;
-use rusqlite::Connection;
-use serde::Serialize;
 use thiserror::Error;
 
 #[derive(Parser, Debug)]
@@ -67,18 +67,18 @@ fn main() -> Result<()> {
         .zip(locate_library_database()?)
         .ok_or(Errors::NoDbFound)?;
 
-    log::debug!("Library database location: {:?}", &library_db);
-    log::debug!("Annotation database location: {:?}", &annotation_db);
+    debug!("Library database location: {:?}", &library_db);
+    debug!("Annotation database location: {:?}", &annotation_db);
 
     let last_sync_file = LastSyncFile::find()?;
-    log::debug!("Last sync file: {:?}", last_sync_file.0);
+    debug!("Last sync file: {:?}", last_sync_file.0);
 
     let last_sync = if args.all {
         None
     } else {
         last_sync_file.read()?
     };
-    log::debug!("Last sync date: {:?}", last_sync);
+    debug!("Last sync date: {:?}", last_sync);
 
     let annotations = read_annotations(annotation_db, library_db, last_sync)?;
     let new_last_sync_time = annotations.iter().map(|a| a.anotation_time).max();
@@ -91,7 +91,7 @@ fn main() -> Result<()> {
 
     if !args.dry_run {
         if let Some(time) = new_last_sync_time {
-            log::debug!("Updating last sync time: {}", time);
+            debug!("Updating last sync time: {}", time);
             last_sync_file.update(time)?;
         }
     }
