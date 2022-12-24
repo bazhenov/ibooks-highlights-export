@@ -1,14 +1,13 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, TimeZone, Utc};
 use clap::Parser;
-use log::debug;
+use log::{debug, error};
 use rusqlite::Connection;
 use serde::Serialize;
 use std::{
     collections::HashMap,
     ffi::OsStr,
     fs,
-    io::stdout,
     path::{Path, PathBuf},
 };
 use thiserror::Error;
@@ -84,9 +83,9 @@ fn main() -> Result<()> {
     let new_last_sync_time = annotations.iter().map(|a| a.anotation_time).max();
 
     if args.json {
-        serde_json::to_writer(stdout(), &annotations)?;
+        println!("{}", format::Json(annotations));
     } else {
-        report_in_logseq_format(annotations);
+        println!("{}", format::Logseq(annotations));
     }
 
     if !args.dry_run {
@@ -133,29 +132,6 @@ fn read_annotations(
     annotations
         .map(|r| r.context(Errors::ContextProcessingAnnotation))
         .collect::<Result<Vec<_>>>()
-}
-
-fn report_in_logseq_format(annotations: impl IntoIterator<Item = Annotation>) {
-    let mut annotations_by_book = HashMap::new();
-    for a in annotations {
-        annotations_by_book
-            .entry(a.book_title.clone())
-            .or_insert_with(Vec::new)
-            .push(a);
-    }
-
-    for (book, annotations) in annotations_by_book {
-        println!("- [[{}]]", book);
-        for a in annotations {
-            let text = a.selected_text.as_deref().unwrap_or("-");
-            if let Some(note) = a.note {
-                println!("\t\t- {}", note);
-                println!("\t\t\t- > {}", text);
-            } else {
-                println!("\t\t- > {}", text);
-            }
-        }
-    }
 }
 
 struct LastSyncFile(PathBuf);
@@ -205,7 +181,7 @@ fn locate_database(path: impl AsRef<Path>) -> Result<Option<PathBuf>> {
 
     for file in fs::read_dir(dir)? {
         let path = file?.path();
-        let extension = path.extension().map(OsStr::to_str).flatten().unwrap_or("");
+        let extension = path.extension().and_then(OsStr::to_str).unwrap_or("");
         if extension == "sqlite" {
             return Ok(Some(path));
         }
@@ -220,4 +196,66 @@ fn core_data_to_timestamp(ts: i64) -> DateTime<Utc> {
 
 fn timestamp_to_core_data(ts: i64) -> i64 {
     ts - 978307200
+}
+
+mod format {
+    use super::*;
+    use std::fmt;
+
+    /// Json format for annotations
+    pub(crate) struct Json(pub Vec<Annotation>);
+
+    impl fmt::Display for Json {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match serde_json::to_string(&self.0) {
+                Ok(json) => {
+                    write!(f, "{}", json)?;
+                    Ok(())
+                }
+                Err(e) => {
+                    error!("Unable to format error: {}", e);
+                    Err(fmt::Error)
+                }
+            }
+        }
+    }
+
+    /// Logseq format
+    ///
+    /// Formatting annotations in logseq format like
+    /// ```markdown
+    /// - [[Book 1]]
+    ///     - > annotation 1
+    ///     - > annotation 2
+    /// - [[Book 2]]
+    ///     - > annotation 1
+    /// ```
+    pub(crate) struct Logseq(pub Vec<Annotation>);
+
+    impl fmt::Display for Logseq {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let mut annotations_by_book = HashMap::new();
+            let annotations = &self.0;
+            for a in annotations {
+                annotations_by_book
+                    .entry(a.book_title.clone())
+                    .or_insert_with(Vec::new)
+                    .push(a);
+            }
+
+            for (book, annotations) in annotations_by_book {
+                writeln!(f, "- [[{}]]", book)?;
+                for a in annotations {
+                    let text = a.selected_text.as_deref().unwrap_or("-");
+                    if let Some(note) = &a.note {
+                        writeln!(f, "\t\t- {}", note)?;
+                        writeln!(f, "\t\t\t- > {}", text)?;
+                    } else {
+                        writeln!(f, "\t\t- > {}", text)?;
+                    }
+                }
+            }
+            Ok(())
+        }
+    }
 }
