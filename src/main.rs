@@ -13,7 +13,7 @@ use std::{
 use thiserror::Error;
 
 #[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
+#[clap(author, version = "0.1", about, long_about = None)]
 struct Args {
     /// Do not update sync date at the end
     #[clap(long)]
