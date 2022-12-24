@@ -2,9 +2,17 @@
 
 Simple cli application for exporting iBooks highlights and annotations.
 
+## Installation
+
+At the moment installation is available using cargo.
+
+```
+$ cargo install --git https://github.com/bazhenov/ibooks-highlights-export
+```
+
 ## Usage
 
-Programm can output in table format (`-t`) as well as JSON format (`-j`)
+Programm can output books highlights
 ```
 $ ibooks-export -t
 ╭────────────────────────────────────┬─────────────────────────┬────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
@@ -21,3 +29,18 @@ $ ibooks-export -t
 
 `ibooks-export` can track the date of last export and update it accordingly. If you will run `ibooks-export --update`
 the program will save last update date and subsequent executions will output only new highlights.
+
+### Output formats
+
+ * default format ([Logseq](https://github.com/logseq/logseq))
+   ```
+   - [[Book 1]]
+    - > annotation 1
+    - > annotation 2
+   - [[Book 2]]
+    - > annotation 1
+    - > annotation 2
+   ```
+ * JSON format (`-j`)
+ * tabular format (`-t`)
+ 
