@@ -15,9 +15,9 @@ use thiserror::Error;
 #[derive(Parser, Debug)]
 #[clap(author, version = "0.1", about, long_about = None)]
 struct Args {
-    /// Do not update sync date at the end
+    /// Update sync date at the end
     #[clap(long)]
-    dry_run: bool,
+    update: bool,
 
     /// Output annotation in JSON format
     #[clap(long, short)]
@@ -94,7 +94,7 @@ fn main() -> Result<()> {
         println!("{}", format::Logseq(annotations));
     }
 
-    if !args.dry_run {
+    if args.update {
         if let Some(time) = new_last_sync_time {
             debug!("Updating last sync time: {}", time);
             last_sync_file.update(time)?;
