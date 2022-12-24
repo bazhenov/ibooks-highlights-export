@@ -23,6 +23,10 @@ struct Args {
     #[clap(long, short)]
     json: bool,
 
+    /// Output annotation in table format
+    #[clap(long, short)]
+    table: bool,
+
     /// Read all annotations, not from last sync time
     #[clap(short)]
     all: bool,
@@ -84,6 +88,8 @@ fn main() -> Result<()> {
 
     if args.json {
         println!("{}", format::Json(annotations));
+    } else if args.table {
+        println!("{}", format::Table(annotations));
     } else {
         println!("{}", format::Logseq(annotations));
     }
@@ -201,6 +207,7 @@ fn timestamp_to_core_data(ts: i64) -> i64 {
 mod format {
     use super::*;
     use std::fmt;
+    use term_table::{row::Row, table_cell::TableCell, TableStyle};
 
     /// Json format for annotations
     pub(crate) struct Json(pub Vec<Annotation>);
@@ -255,6 +262,30 @@ mod format {
                     }
                 }
             }
+            Ok(())
+        }
+    }
+
+    pub(crate) struct Table(pub Vec<Annotation>);
+
+    impl fmt::Display for Table {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let mut table = term_table::Table::new();
+
+            table.max_column_width(120);
+            table.style = TableStyle::rounded();
+
+            for annotation in &self.0 {
+                if let Some(text) = &annotation.selected_text {
+                    let row = Row::new(vec![
+                        TableCell::new(&annotation.book_title),
+                        TableCell::new(annotation.anotation_time),
+                        TableCell::new(text),
+                    ]);
+                    table.add_row(row);
+                }
+            }
+            write!(f, "{}", table.render())?;
             Ok(())
         }
     }
