@@ -112,17 +112,21 @@ fn read_annotations(
     let connection = Connection::open(annotation_db)?;
     connection.execute("ATTACH DATABASE ? AS l", [library_db.as_ref().to_str()])?;
 
+    // Here I'm using ZFUTUREPROOFING6 instead of ZANNOTATIONMODIFICATIONDATE beacuse
+    // latter works unreliably. It seems like ZFUTUREPROOFING6 is annotation created time.
+    // At least I've found one other project using it:
+    // https://github.com/jay1803/ibook-server/blob/58838a3a1004aeaaa7cd7ebf4ef95edf8cc45ed3/controllers/bookController.js#L124
     let mut stms = connection.prepare(
         "select
             a.ZANNOTATIONSELECTEDTEXT,
             a.ZANNOTATIONNOTE,
-            round(a.ZANNOTATIONMODIFICATIONDATE),
+            round(a.ZFUTUREPROOFING6),
             l.ZTITLE
          from ZAEANNOTATION a
          inner join ZBKLIBRARYASSET l ON l.ZASSETID = a.ZANNOTATIONASSETID
          where a.ZANNOTATIONSELECTEDTEXT IS NOT NULL AND (a.ZANNOTATIONNOTE != '' OR a.ZANNOTATIONNOTE IS NULL) AND
-         round(a.ZANNOTATIONMODIFICATIONDATE) > ?
-         ORDER BY a.ZANNOTATIONMODIFICATIONDATE",
+         round(a.ZFUTUREPROOFING6) > ?
+         ORDER BY a.ZFUTUREPROOFING6",
     )?;
     let created_after = created_after.map(|t| t.timestamp()).unwrap_or(0);
     let annotations = stms.query_map([timestamp_to_core_data(created_after)], |row| {
