@@ -210,6 +210,7 @@ fn timestamp_to_core_data(ts: i64) -> i64 {
 
 mod format {
     use super::*;
+    use chrono::Local;
     use std::fmt;
     use term_table::{row::Row, table_cell::TableCell, TableStyle};
 
@@ -276,14 +277,29 @@ mod format {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             let mut table = term_table::Table::new();
 
-            table.max_column_width(120);
+            let width = term_size::dimensions().map(|(w, _)| w).unwrap_or(120);
+
+            let column_separators = 4;
+            let date_column_width = 19 + 2; // 19 characters of the date plus 2 padding chars
+            let title_column_width = ((width - date_column_width) / 4).max(10);
+            let text_coulmn_width =
+                width - date_column_width - title_column_width - column_separators;
+            table.set_max_column_widths(vec![
+                (0, title_column_width),
+                (1, date_column_width),
+                (2, text_coulmn_width),
+            ]);
             table.style = TableStyle::rounded();
 
             for annotation in &self.0 {
                 if let Some(text) = &annotation.selected_text {
+                    let time = annotation
+                        .anotation_time
+                        .with_timezone(&Local)
+                        .naive_local();
                     let row = Row::new(vec![
                         TableCell::new(&annotation.book_title),
-                        TableCell::new(annotation.anotation_time),
+                        TableCell::new(time),
                         TableCell::new(text),
                     ]);
                     table.add_row(row);
