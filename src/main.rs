@@ -201,7 +201,9 @@ fn locate_database(path: impl AsRef<Path>) -> Result<Option<PathBuf>> {
 }
 
 fn core_data_to_timestamp(ts: i64) -> DateTime<Utc> {
-    Utc.timestamp(ts + 978307200, 0)
+    Utc.timestamp_opt(ts + 978307200, 0)
+        .single()
+        .expect("Invalid date")
 }
 
 fn timestamp_to_core_data(ts: i64) -> i64 {
