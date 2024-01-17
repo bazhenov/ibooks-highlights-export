@@ -59,7 +59,7 @@ enum Errors {
 
 #[derive(Serialize)]
 struct Annotation {
-    selected_text: Option<String>,
+    selected_text: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     note: Option<String>,
     anotation_time: DateTime<Utc>,
@@ -275,9 +275,7 @@ mod format {
                 writeln!(f, "[[{}]]", book)?;
                 writeln!(f)?;
                 for a in annotations {
-                    let Some(text) = &a.selected_text else {
-                        continue;
-                    };
+                    let text = &a.selected_text;
                     if let Some(note) = &a.note {
                         writeln!(f, "{}", note)?;
                     }
@@ -317,12 +315,11 @@ mod format {
             for (book, annotations) in annotations_by_book {
                 writeln!(f, "- [[{}]]", book)?;
                 for a in annotations {
-                    let text = a.selected_text.as_deref().unwrap_or("-");
                     if let Some(note) = &a.note {
                         writeln!(f, "\t\t- {}", note)?;
-                        writeln!(f, "\t\t\t- > {}", text)?;
+                        writeln!(f, "\t\t\t- > {}", a.selected_text)?;
                     } else {
-                        writeln!(f, "\t\t- > {}", text)?;
+                        writeln!(f, "\t\t- > {}", a.selected_text)?;
                     }
                 }
             }
@@ -351,9 +348,6 @@ mod format {
             table.style = TableStyle::rounded();
 
             for annotation in &self.0 {
-                let Some(text) = &annotation.selected_text else {
-                    continue;
-                };
                 let time = annotation
                     .anotation_time
                     .with_timezone(&Local)
@@ -361,7 +355,7 @@ mod format {
                 let row = Row::new(vec![
                     TableCell::new(&annotation.book_title),
                     TableCell::new(time),
-                    TableCell::new(text),
+                    TableCell::new(&annotation.selected_text),
                 ]);
                 table.add_row(row);
             }
