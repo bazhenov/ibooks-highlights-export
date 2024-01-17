@@ -27,6 +27,10 @@ struct Args {
     #[clap(long, short)]
     table: bool,
 
+    /// Output annotation in Obsidian markdown format
+    #[clap(long)]
+    obsidian: bool,
+
     /// Read all annotations, not from last sync time
     #[clap(short)]
     all: bool,
@@ -90,6 +94,8 @@ fn main() -> Result<()> {
         println!("{}", format::Json(annotations));
     } else if args.table {
         println!("{}", format::Table(annotations));
+    } else if args.obsidian {
+        println!("{}", format::Obsidian(annotations));
     } else {
         println!("{}", format::Logseq(annotations));
     }
@@ -234,6 +240,57 @@ mod format {
         }
     }
 
+    /// Obsidian format
+    ///
+    /// Formatting annotations in Obsidian markdown format like
+    /// ```markdown
+    /// [[Book Title 1]]
+    ///
+    /// Note text (if any)
+    /// > Annotation text
+    /// ---
+    /// [[Book Title 2]]
+    ///
+    /// Note text (if any)
+    /// > Annotation text
+    /// ```
+    pub(crate) struct Obsidian(pub Vec<Annotation>);
+
+    impl fmt::Display for Obsidian {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let mut annotations_by_book = HashMap::new();
+            let annotations = &self.0;
+            for a in annotations {
+                annotations_by_book
+                    .entry(a.book_title.clone())
+                    .or_insert_with(Vec::new)
+                    .push(a);
+            }
+
+            for (idx, (book, annotations)) in annotations_by_book.iter().enumerate() {
+                if idx > 0 {
+                    writeln!(f, "---")?;
+                    writeln!(f)?;
+                }
+                writeln!(f, "[[{}]]", book)?;
+                writeln!(f)?;
+                for a in annotations {
+                    let Some(text) = &a.selected_text else {
+                        continue;
+                    };
+                    if let Some(note) = &a.note {
+                        writeln!(f, "{}", note)?;
+                    }
+                    for line in text.lines() {
+                        writeln!(f, "> {}", line)?;
+                    }
+                    writeln!(f)?;
+                }
+            }
+            Ok(())
+        }
+    }
+
     /// Logseq format
     ///
     /// Formatting annotations in logseq format like
@@ -294,18 +351,19 @@ mod format {
             table.style = TableStyle::rounded();
 
             for annotation in &self.0 {
-                if let Some(text) = &annotation.selected_text {
-                    let time = annotation
-                        .anotation_time
-                        .with_timezone(&Local)
-                        .naive_local();
-                    let row = Row::new(vec![
-                        TableCell::new(&annotation.book_title),
-                        TableCell::new(time),
-                        TableCell::new(text),
-                    ]);
-                    table.add_row(row);
-                }
+                let Some(text) = &annotation.selected_text else {
+                    continue;
+                };
+                let time = annotation
+                    .anotation_time
+                    .with_timezone(&Local)
+                    .naive_local();
+                let row = Row::new(vec![
+                    TableCell::new(&annotation.book_title),
+                    TableCell::new(time),
+                    TableCell::new(text),
+                ]);
+                table.add_row(row);
             }
             write!(f, "{}", table.render())?;
             Ok(())
